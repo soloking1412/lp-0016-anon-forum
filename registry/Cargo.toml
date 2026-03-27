@@ -1,0 +1,13 @@
+[package]
+name    = "forum-anon-registry"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+forum-anon-types  = { path = "../types" }
+forum-anon-shamir = { path = "../shamir" }
+sha2              = { workspace = true }
+ed25519-dalek     = { workspace = true }
+borsh             = { workspace = true }
+serde             = { workspace = true }
+thiserror         = { workspace = true }

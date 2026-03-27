@@ -1,0 +1,31 @@
+[workspace]
+members = [
+    "types",
+    "shamir",
+    "circuit",
+    "registry",
+    "moderation-lib",
+    "cli",
+    "tests",
+]
+exclude = ["circuit/guest", "registry/guest", "app", "registry-lez"]
+resolver = "2"
+
+[workspace.dependencies]
+risc0-zkvm  = "1.2"
+risc0-build = "1.2"
+sha2        = "0.10"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+vsss-rs     = { version = "4", default-features = false, features = ["std"] }
+borsh       = { version = "1", features = ["derive"] }
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+anyhow      = "1"
+thiserror   = "1"
+hex         = "0.4"
+rand        = "0.8"
+clap        = { version = "4", features = ["derive"] }
+tokio       = { version = "1", features = ["full"] }
+reqwest     = { version = "0.12", features = ["json"] }
+axum        = "0.8"
+tower-http  = { version = "0.6", features = ["cors"] }

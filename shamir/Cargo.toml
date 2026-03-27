@@ -1,0 +1,12 @@
+[package]
+name    = "forum-anon-shamir"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand    = { workspace = true }
+sha2    = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+rand = { workspace = true }

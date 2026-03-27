@@ -1,0 +1,26 @@
+[package]
+name    = "forum-registry-runner"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "init-forum"
+path = "src/bin/init_forum.rs"
+
+[[bin]]
+name = "send-forum-tx"
+path = "src/bin/send_forum_tx.rs"
+
+[dependencies]
+borsh         = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+anyhow        = { workspace = true }
+hex           = { workspace = true }
+tokio         = { workspace = true }
+reqwest       = { version = "0.12", features = ["json"] }
+base64        = "0.22"
+risc0-zkvm    = { version = "3.0.5", features = ["std"] }
+nssa          = { path = "/Users/soloking/logos-execution-zone/nssa" }
+common        = { path = "/Users/soloking/logos-execution-zone/common" }
+sequencer_service_rpc = { path = "/Users/soloking/logos-execution-zone/sequencer/service/rpc", features = ["client"] }

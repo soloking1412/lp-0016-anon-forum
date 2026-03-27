@@ -1,0 +1,16 @@
+[package]
+name    = "forum-anon-registry-lez"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "forum-anon-registry-lez"
+path = "src/main.rs"
+
+[dependencies]
+nssa_core     = { path = "../nssa_core" }
+borsh         = "1.5"
+sha2          = "0.10"
+ed25519-dalek = { version = "2", default-features = false, features = ["digest", "alloc"] }
+serde         = { version = "1", features = ["derive"] }
+risc0-zkvm    = { version = "3.0.5", features = ["std"] }

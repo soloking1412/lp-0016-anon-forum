@@ -1,0 +1,24 @@
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/EspressoSystems/jellyfish.git?rev=dc166cf0f803c3e5067f9dfcc21e3dade986a447"]
+git = "https://github.com/EspressoSystems/jellyfish.git"
+rev = "dc166cf0f803c3e5067f9dfcc21e3dade986a447"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/EspressoSystems/jellyfish?tag=jf-crhf-v0.1.1"]
+git = "https://github.com/EspressoSystems/jellyfish"
+tag = "jf-crhf-v0.1.1"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/logos-blockchain/logos-blockchain.git"]
+git = "https://github.com/logos-blockchain/logos-blockchain.git"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/logos-co/Overwatch?rev=448c192"]
+git = "https://github.com/logos-co/Overwatch"
+rev = "448c192"
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"

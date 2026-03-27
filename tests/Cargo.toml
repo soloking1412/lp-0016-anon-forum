@@ -1,0 +1,18 @@
+[package]
+name    = "forum-anon-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dev-dependencies]
+forum-anon-types      = { path = "../types" }
+forum-anon-shamir     = { path = "../shamir" }
+forum-anon-circuit    = { path = "../circuit" }
+forum-anon-registry   = { path = "../registry" }
+forum-anon-moderation = { path = "../moderation-lib" }
+sha2                   = { workspace = true }
+ed25519-dalek          = { workspace = true }
+borsh                  = { workspace = true }
+serde_json             = { workspace = true }
+rand                   = { workspace = true }
+hex                    = { workspace = true }
+anyhow                 = { workspace = true }

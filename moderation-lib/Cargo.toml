@@ -1,0 +1,19 @@
+[package]
+name    = "forum-anon-moderation"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+forum-anon-types   = { path = "../types" }
+forum-anon-shamir  = { path = "../shamir" }
+forum-anon-circuit = { path = "../circuit" }
+sha2               = { workspace = true }
+ed25519-dalek      = { workspace = true }
+borsh              = { workspace = true }
+serde              = { workspace = true }
+serde_json         = { workspace = true }
+anyhow             = { workspace = true }
+thiserror          = { workspace = true }
+rand               = { workspace = true }
+hex                = { workspace = true }
+risc0-zkvm         = { workspace = true }

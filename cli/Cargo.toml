@@ -1,0 +1,29 @@
+[package]
+name    = "forum-anon"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "forum-anon"
+path = "src/main.rs"
+
+[dependencies]
+forum-anon-types      = { path = "../types" }
+forum-anon-shamir     = { path = "../shamir" }
+forum-anon-moderation = { path = "../moderation-lib" }
+forum-anon-circuit    = { path = "../circuit" }
+sha2                   = { workspace = true }
+ed25519-dalek          = { workspace = true }
+borsh                  = { workspace = true }
+serde                  = { workspace = true }
+serde_json             = { workspace = true }
+anyhow                 = { workspace = true }
+clap                   = { workspace = true }
+tokio                  = { workspace = true }
+rand                   = { workspace = true }
+hex                    = { workspace = true }
+axum                   = { workspace = true }
+tower-http             = { workspace = true }
+base64                 = "0.22"
+reqwest                = { workspace = true }
+risc0-zkvm             = { workspace = true }

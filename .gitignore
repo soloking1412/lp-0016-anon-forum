@@ -1,0 +1,16 @@
+# Rust build artifacts (all nested target/ dirs)
+**/target/
+
+# Vendored dependencies (too large to commit)
+/registry-lez/vendor/
+
+# Node.js
+/app/node_modules/
+/app/dist/
+
+# Secrets / temp files
+*.key
+*.json.tmp
+.DS_Store
+.env
+Cargo.lock

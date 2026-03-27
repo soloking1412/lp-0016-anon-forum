@@ -1,0 +1,18 @@
+[workspace]
+
+[package]
+name    = "forum-anon-registry-guest"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "forum-anon-registry-guest"
+path = "src/main.rs"
+
+[dependencies]
+forum-anon-registry = { path = ".." }
+forum-anon-types    = { path = "../../types" }
+forum-anon-shamir   = { path = "../../shamir" }
+ed25519-dalek       = { version = "2", features = ["rand_core"] }
+risc0-zkvm          = { version = "1.2", features = ["std"], default-features = false }
+borsh               = { version = "1", features = ["derive"] }
