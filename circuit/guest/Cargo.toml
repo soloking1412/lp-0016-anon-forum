@@ -10,7 +10,7 @@ name = "forum-anon-guest"
 path = "src/main.rs"
 
 [dependencies]
-risc0-zkvm = { version = "1.2", features = ["std"], default-features = false }
+risc0-zkvm = { version = "3.0", features = ["std"], default-features = false }
 sha2       = { version = "0.10", default-features = false, features = ["oid"] }
 borsh      = { version = "1", features = ["derive"], default-features = false }
 serde      = { version = "1", features = ["derive"], default-features = false }
