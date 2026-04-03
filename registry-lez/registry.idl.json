@@ -1,0 +1,265 @@
+{
+  "version": "0.1.0",
+  "name": "forum-anon-registry",
+  "program_id": [1909169956, 2313131218, 3219152519, 3402869729,
+                  1590750509, 2066446164, 1519591204, 2113149490],
+  "docs": [
+    "Anonymous forum membership registry for LP-0016.",
+    "Handles member commitment storage, N-of-M moderation certificates,",
+    "and threshold slash with retroactive deanonymization via Shamir reconstruction."
+  ],
+  "instructions": [
+    {
+      "name": "Initialize",
+      "discriminator": "e92d2a1e5e4b3f87",
+      "docs": ["Create a new forum instance with a fixed moderator set and threshold parameters."],
+      "execution": "public",
+      "accounts": [
+        { "name": "forum_account", "writable": true, "signer": false, "visibility": "public" }
+      ],
+      "args": [
+        { "name": "forum_id",       "type": { "array": ["u8", 32] } },
+        { "name": "moderators",     "type": { "vec": { "array": ["u8", 32] } } },
+        { "name": "threshold_n",    "type": "u32",
+          "docs": "Number of moderator signatures required per moderation certificate." },
+        { "name": "threshold_k",    "type": "u32",
+          "docs": "Number of moderation certificates required to trigger a slash." },
+        { "name": "stake_required", "type": "u64",
+          "docs": "Minimum stake (base units) required at member registration." },
+        { "name": "initial_root",   "type": { "array": ["u8", 32] },
+          "docs": "Initial Merkle root (zero if no members at creation)." }
+      ]
+    },
+    {
+      "name": "Register",
+      "discriminator": "a3f74c2d1b8e9051",
+      "docs": [
+        "Register a new member. Records commitment, member_tag, staked amount,",
+        "and Shamir share commitments for future slash reconstruction."
+      ],
+      "execution": "public",
+      "accounts": [
+        { "name": "forum_account", "writable": true, "signer": false, "visibility": "public" }
+      ],
+      "args": [
+        { "name": "commitment",
+          "type": { "array": ["u8", 32] },
+          "docs": "SHA256('forum/v1/commitment:' || id_secret)" },
+        { "name": "member_tag",
+          "type": { "array": ["u8", 32] },
+          "docs": "SHA256('forum/v1/member-tag:' || id_secret || forum_id). Stable per member×forum." },
+        { "name": "stake",
+          "type": "u64",
+          "docs": "Staked amount, must be >= stake_required." },
+        { "name": "shamir_commitments",
+          "type": { "vec": { "array": ["u8", 32] } },
+          "docs": "SHA256('forum/v1/share-commit:' || index || value) for each Shamir share." }
+      ]
+    },
+    {
+      "name": "UpdateMerkleRoot",
+      "discriminator": "c5e1b0d8f23a7694",
+      "docs": ["Update the forum's Merkle root after one or more registrations."],
+      "execution": "public",
+      "accounts": [
+        { "name": "forum_account", "writable": true, "signer": false, "visibility": "public" }
+      ],
+      "args": [
+        { "name": "new_root", "type": { "array": ["u8", 32] } }
+      ]
+    },
+    {
+      "name": "SubmitModerationCert",
+      "discriminator": "d47f803c69e21ba5",
+      "docs": [
+        "Submit a moderation certificate against a member_tag.",
+        "Verifies N-of-M Ed25519 signatures. Increments the member's strike count.",
+        "Does NOT slash — slash is triggered separately once strike_count >= threshold_k."
+      ],
+      "execution": "public",
+      "accounts": [
+        { "name": "forum_account", "writable": true, "signer": false, "visibility": "public" }
+      ],
+      "args": [
+        {
+          "name": "cert",
+          "type": {
+            "defined": "ModerationCert"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Slash",
+      "discriminator": "b92e5d01c3f487a6",
+      "docs": [
+        "Submit K moderation certificates and K Shamir shares.",
+        "Verifies all certs (N signatures each), reconstructs id_secret via Lagrange over GF(2^8),",
+        "verifies commitment, revokes member, and claims stake."
+      ],
+      "execution": "public",
+      "accounts": [
+        { "name": "forum_account", "writable": true, "signer": false, "visibility": "public" }
+      ],
+      "args": [
+        {
+          "name": "slash",
+          "type": {
+            "defined": "SlashData"
+          }
+        }
+      ]
+    },
+    {
+      "name": "RejectNullifier",
+      "discriminator": "f10c6a84d592e3b7",
+      "docs": ["Explicitly record a post nullifier as spent, rejecting duplicate posts."],
+      "execution": "public",
+      "accounts": [
+        { "name": "forum_account", "writable": true, "signer": false, "visibility": "public" }
+      ],
+      "args": [
+        { "name": "nullifier", "type": { "array": ["u8", 32] } }
+      ]
+    },
+    {
+      "name": "VerifyPost",
+      "discriminator": "e683a12f0d47c95b",
+      "docs": [
+        "Verify a Risc0 zkVM membership proof for an anonymous post.",
+        "Checks the proof's merkle_root matches the on-chain root,",
+        "the member is not revoked, and the post_nullifier has not been used."
+      ],
+      "execution": "public",
+      "accounts": [
+        { "name": "forum_account", "writable": true, "signer": false, "visibility": "public" }
+      ],
+      "args": [
+        {
+          "name": "proof",
+          "type": {
+            "defined": "MembershipProof"
+          }
+        }
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "MemberRecord",
+      "docs": ["Per-member state stored in the registry."],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "commitment",         "type": { "array": ["u8", 32] } },
+          { "name": "member_tag",         "type": { "array": ["u8", 32] } },
+          { "name": "stake",              "type": "u64" },
+          { "name": "strike_count",       "type": "u32" },
+          { "name": "revoked",            "type": "bool" },
+          { "name": "shamir_commitments", "type": { "vec": { "array": ["u8", 32] } } }
+        ]
+      }
+    },
+    {
+      "name": "ModeratorVote",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "forum_id",         "type": { "array": ["u8", 32] } },
+          { "name": "content_hash",     "type": { "array": ["u8", 32] } },
+          { "name": "member_tag",       "type": { "array": ["u8", 32] } },
+          { "name": "strike_reason",    "type": "string" },
+          { "name": "moderator_pubkey", "type": { "array": ["u8", 32] } },
+          { "name": "signature",        "type": { "vec": "u8" },
+            "docs": ["Ed25519 signature over SHA256('forum/v1/vote:' || forum_id || content_hash || member_tag || reason)"] }
+        ]
+      }
+    },
+    {
+      "name": "ModerationCert",
+      "docs": ["Aggregated N-of-M moderation certificate."],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "forum_id",     "type": { "array": ["u8", 32] } },
+          { "name": "content_hash", "type": { "array": ["u8", 32] } },
+          { "name": "member_tag",   "type": { "array": ["u8", 32] } },
+          { "name": "votes",        "type": { "vec": { "defined": "ModeratorVote" } } }
+        ]
+      }
+    },
+    {
+      "name": "ShamirShare",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "index", "type": "u8" },
+          { "name": "value", "type": { "vec": "u8" } }
+        ]
+      }
+    },
+    {
+      "name": "SlashData",
+      "docs": ["Payload for a slash transaction: K certs + K Shamir shares."],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "forum_id",   "type": { "array": ["u8", 32] } },
+          { "name": "member_tag", "type": { "array": ["u8", 32] } },
+          { "name": "certs",      "type": { "vec": { "defined": "ModerationCert" } } },
+          { "name": "shares",     "type": { "vec": { "defined": "ShamirShare" } } }
+        ]
+      }
+    },
+    {
+      "name": "MembershipProof",
+      "docs": ["Public journal output from the Risc0 zkVM membership circuit."],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "merkle_root",      "type": { "array": ["u8", 32] } },
+          { "name": "forum_id",         "type": { "array": ["u8", 32] } },
+          { "name": "member_tag",       "type": { "array": ["u8", 32] } },
+          { "name": "post_nullifier",   "type": { "array": ["u8", 32] } },
+          { "name": "ext_nullifier",    "type": { "array": ["u8", 32] } },
+          { "name": "presenter_pubkey", "type": { "array": ["u8", 32] } }
+        ]
+      }
+    },
+    {
+      "name": "RegistryState",
+      "docs": ["Full on-chain state for one forum instance."],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "forum_id",       "type": { "array": ["u8", 32] } },
+          { "name": "moderators",     "type": { "vec": { "array": ["u8", 32] } } },
+          { "name": "threshold_n",    "type": "u32" },
+          { "name": "threshold_k",    "type": "u32" },
+          { "name": "stake_required", "type": "u64" },
+          { "name": "merkle_root",    "type": { "array": ["u8", 32] } },
+          { "name": "members",        "type": { "vec": { "defined": "MemberRecord" } } },
+          { "name": "revoked",        "type": { "vec": { "array": ["u8", 32] } } },
+          { "name": "nullifiers",     "type": { "vec": { "array": ["u8", 32] } } }
+        ]
+      }
+    }
+  ],
+  "events": [],
+  "errors": [
+    { "code": 100, "name": "ForumAlreadyInitialized",  "msg": "Forum account has already been initialised." },
+    { "code": 101, "name": "MemberAlreadyRegistered",  "msg": "A member with this commitment is already registered." },
+    { "code": 102, "name": "InsufficientStake",        "msg": "Staked amount is below the forum minimum." },
+    { "code": 103, "name": "InvalidMerkleRoot",        "msg": "Submitted Merkle root does not match on-chain root." },
+    { "code": 104, "name": "DuplicateNullifier",       "msg": "This post nullifier has already been used." },
+    { "code": 105, "name": "MemberRevoked",            "msg": "The member has been revoked and cannot post." },
+    { "code": 106, "name": "MemberNotFound",           "msg": "No registered member with this member_tag." },
+    { "code": 107, "name": "InsufficientVotes",        "msg": "Certificate does not reach the N-of-M threshold." },
+    { "code": 108, "name": "InvalidSignature",         "msg": "One or more moderator signatures failed verification." },
+    { "code": 109, "name": "UnknownModerator",         "msg": "Signer is not in the forum's moderator set." },
+    { "code": 110, "name": "InsufficientCerts",        "msg": "Slash requires K distinct certificates." },
+    { "code": 111, "name": "DuplicateCert",            "msg": "Slash bundle contains duplicate content_hash." },
+    { "code": 112, "name": "InvalidShare",             "msg": "A Shamir share does not match its on-chain commitment." },
+    { "code": 113, "name": "CommitmentMismatch",       "msg": "Reconstructed id_secret does not hash to the stored commitment." }
+  ]
+}

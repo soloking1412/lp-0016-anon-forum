@@ -1,4 +1,5 @@
 mod daemon;
+mod waku;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -107,6 +108,17 @@ enum Command {
     },
 }
 
+#[derive(serde::Deserialize)]
+struct ShareFile {
+    index: u8,
+    value: String,
+}
+
+fn share_file_to_shamir(sf: ShareFile) -> Result<ShamirShare> {
+    let value = hex::decode(&sf.value).context("decode share value hex")?;
+    Ok(ShamirShare { index: sf.index, value })
+}
+
 fn parse_hex32(s: &str) -> Result<[u8; 32], String> {
     let bytes = hex::decode(s).map_err(|e| e.to_string())?;
     bytes.try_into().map_err(|_| "expected 32-byte hex string".to_string())
@@ -205,7 +217,8 @@ async fn main() -> Result<()> {
             let mut parsed_shares: Vec<ShamirShare> = Vec::new();
             for path in &shares {
                 let json = std::fs::read_to_string(path).context("read share")?;
-                parsed_shares.push(serde_json::from_str(&json).context("parse share")?);
+                let sf: ShareFile = serde_json::from_str(&json).context("parse share")?;
+                parsed_shares.push(share_file_to_shamir(sf)?);
             }
             let slash = build_slash(forum, member_tag, parsed_certs, parsed_shares);
             std::fs::write(&out, serde_json::to_string_pretty(&slash)?).context("write slash")?;
@@ -214,7 +227,8 @@ async fn main() -> Result<()> {
 
         Command::VerifyShare { share, commitment } => {
             let json = std::fs::read_to_string(&share).context("read share")?;
-            let s: ShamirShare = serde_json::from_str(&json).context("parse share")?;
+            let sf: ShareFile = serde_json::from_str(&json).context("parse share")?;
+            let s = share_file_to_shamir(sf)?;
             if forum_anon_moderation::identity::verify_share(&s, &commitment) {
                 println!("VALID");
             } else {
@@ -226,7 +240,8 @@ async fn main() -> Result<()> {
             let mut parsed: Vec<ShamirShare> = Vec::new();
             for path in &shares {
                 let json = std::fs::read_to_string(path).context("read share")?;
-                parsed.push(serde_json::from_str(&json).context("parse share")?);
+                let sf: ShareFile = serde_json::from_str(&json).context("parse share")?;
+                parsed.push(share_file_to_shamir(sf)?);
             }
             let id_secret = reconstruct_and_verify(&parsed, &commitment)?;
             println!("ok — id_secret: {}", hex::encode(id_secret));

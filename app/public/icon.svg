@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <polygon points="32,4 58,18 58,46 32,60 6,46 6,18" fill="#a78bfa" opacity="0.15" stroke="#a78bfa" stroke-width="2"/>
+  <polygon points="32,12 50,22 50,42 32,52 14,42 14,22" fill="#a78bfa" opacity="0.3" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="32" y="38" text-anchor="middle" font-size="22" font-family="system-ui" fill="#a78bfa">⬡</text>
+</svg>

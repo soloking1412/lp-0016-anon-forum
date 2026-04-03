@@ -20,7 +20,7 @@ hex           = { workspace = true }
 tokio         = { workspace = true }
 reqwest       = { version = "0.12", features = ["json"] }
 base64        = "0.22"
-risc0-zkvm    = { version = "3.0.5", features = ["std"] }
-nssa          = { path = "/Users/soloking/logos-execution-zone/nssa" }
-common        = { path = "/Users/soloking/logos-execution-zone/common" }
-sequencer_service_rpc = { path = "/Users/soloking/logos-execution-zone/sequencer/service/rpc", features = ["client"] }
+risc0-zkvm            = { version = "3.0", features = ["std"] }
+nssa                  = { git = "https://github.com/logos-blockchain/logos-execution-zone.git" }
+common                = { git = "https://github.com/logos-blockchain/logos-execution-zone.git" }
+sequencer_service_rpc = { git = "https://github.com/logos-blockchain/logos-execution-zone.git", features = ["client"] }

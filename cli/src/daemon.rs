@@ -1,5 +1,6 @@
 use axum::{
     extract::{Query, State},
+    extract::ws::{Message, WebSocket, WebSocketUpgrade},
     http::{HeaderValue, Method},
     routing::{get, post},
     Json, Router,
@@ -21,6 +22,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tower_http::cors::CorsLayer;
 
+use crate::waku::WakuClient;
+
 fn parse32(s: &str) -> Result<[u8; 32], String> {
     hex::decode(s)
         .map_err(|e| e.to_string())?
@@ -41,7 +44,6 @@ fn api_err(e: impl std::fmt::Display) -> (axum::http::StatusCode, String) {
 
 type ApiResult<T> = Result<Json<T>, (axum::http::StatusCode, String)>;
 
-// ── wire types ──────────────────────────────────────────────────────────────
 
 #[derive(Serialize)]
 struct KeygenResp {
@@ -140,7 +142,6 @@ struct CertsQuery {
     forum_id: Option<String>,
 }
 
-// ── conversions ──────────────────────────────────────────────────────────────
 
 fn vote_to_json(v: &ModeratorVote) -> VoteJson {
     VoteJson {
@@ -182,7 +183,6 @@ fn json_to_cert(c: &CertJson) -> Result<ModerationCert, String> {
     })
 }
 
-// ── state ────────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Serialize, Deserialize)]
 struct ForumEntry {
@@ -191,18 +191,22 @@ struct ForumEntry {
     threshold_k:   u32,
     threshold_n:   u32,
     moderators:    Vec<[u8; 32]>,
-    commitments:   Vec<[u8; 32]>,  // registered member commitments (merkle leaves)
+    commitments:   Vec<[u8; 32]>,
     merkle_root:   [u8; 32],
     deploy_tx:     String,
 }
 
+const WAKU_TOPIC_POSTS: &str = "/forum-anon/1/posts/json";
+const WAKU_TOPIC_VOTES: &str = "/forum-anon/1/votes/json";
+const WAKU_TOPIC_CERTS: &str = "/forum-anon/1/certs/json";
+
 #[derive(Clone)]
 struct AppState {
     certs:  Arc<Mutex<Vec<CertJson>>>,
-    forums: Arc<Mutex<HashMap<String, ForumEntry>>>,  // key = forum_id hex
+    forums: Arc<Mutex<HashMap<String, ForumEntry>>>,
+    waku:   Option<Arc<WakuClient>>,
 }
 
-// ── handlers ─────────────────────────────────────────────────────────────────
 
 async fn keygen() -> ApiResult<KeygenResp> {
     let identity = MemberIdentity::generate(&mut OsRng);
@@ -214,8 +218,8 @@ async fn keygen() -> ApiResult<KeygenResp> {
 
 #[derive(Serialize)]
 struct ModKeyResp {
-    signing_key_hex: String,   // 32-byte seed — keep private, used in Moderation tab
-    pubkey_hex:      String,   // 32-byte verifying key — paste into Create Forum
+    signing_key_hex: String,
+    pubkey_hex:      String,
 }
 
 async fn generate_mod_key() -> ApiResult<ModKeyResp> {
@@ -245,7 +249,10 @@ async fn register(Json(req): Json<RegisterReq>) -> ApiResult<RegisterResp> {
     }))
 }
 
-async fn prove_post_handler(Json(req): Json<ProvePostReq>) -> ApiResult<ProvePostResp> {
+async fn prove_post_handler(
+    State(state): State<AppState>,
+    Json(req): Json<ProvePostReq>,
+) -> ApiResult<ProvePostResp> {
     if req.leaf_index >= req.num_leaves || !req.num_leaves.is_power_of_two() {
         return Err(api_err("leaf_index out of range or num_leaves not a power of two"));
     }
@@ -289,15 +296,27 @@ async fn prove_post_handler(Json(req): Json<ProvePostReq>) -> ApiResult<ProvePos
     let proof: MembershipProof =
         BorshDeserialize::try_from_slice(&receipt.journal.bytes).map_err(api_err)?;
 
-    Ok(Json(ProvePostResp {
+    let resp = ProvePostResp {
         member_tag:    hex::encode(proof.member_tag),
         post_nullifier: hex::encode(proof.post_nullifier),
         merkle_root:   hex::encode(proof.merkle_root),
         receipt_hex:   hex::encode(&receipt.journal.bytes),
-    }))
+    };
+
+    if let Some(waku) = state.waku.clone() {
+        let payload = serde_json::to_value(&resp).unwrap_or_default();
+        tokio::spawn(async move {
+            let _ = waku.publish(WAKU_TOPIC_POSTS, &payload).await;
+        });
+    }
+
+    Ok(Json(resp))
 }
 
-async fn moderate(Json(req): Json<ModerateReq>) -> ApiResult<VoteJson> {
+async fn moderate(
+    State(state): State<AppState>,
+    Json(req): Json<ModerateReq>,
+) -> ApiResult<VoteJson> {
     let key_bytes: [u8; 32] = hex::decode(&req.moderator_key_hex)
         .map_err(api_err)?
         .try_into()
@@ -307,9 +326,18 @@ async fn moderate(Json(req): Json<ModerateReq>) -> ApiResult<VoteJson> {
     let content_hash = parse32(&req.content_hash).map_err(api_err)?;
     let member_tag   = parse32(&req.member_tag).map_err(api_err)?;
 
-    let vote = draft_vote(forum_id, content_hash, member_tag, req.reason, &signing_key)
+    let vote      = draft_vote(forum_id, content_hash, member_tag, req.reason, &signing_key)
         .map_err(api_err)?;
-    Ok(Json(vote_to_json(&vote)))
+    let vote_json = vote_to_json(&vote);
+
+    if let Some(waku) = state.waku.clone() {
+        let payload = serde_json::to_value(&vote_json).unwrap_or_default();
+        tokio::spawn(async move {
+            let _ = waku.publish(WAKU_TOPIC_VOTES, &payload).await;
+        });
+    }
+
+    Ok(Json(vote_json))
 }
 
 async fn aggregate_cert(
@@ -321,6 +349,14 @@ async fn aggregate_cert(
     let cert      = aggregate_votes(votes, req.threshold_n).map_err(api_err)?;
     let cert_json = cert_to_json(&cert);
     state.certs.lock().unwrap().push(cert_json.clone());
+
+    if let Some(waku) = state.waku.clone() {
+        let payload = serde_json::to_value(&cert_json).unwrap_or_default();
+        tokio::spawn(async move {
+            let _ = waku.publish(WAKU_TOPIC_CERTS, &payload).await;
+        });
+    }
+
     Ok(Json(cert_json))
 }
 
@@ -359,12 +395,61 @@ async fn list_certs(
     Json(result)
 }
 
-// ── entry point ──────────────────────────────────────────────────────────────
+async fn waku_posts(State(state): State<AppState>) -> ApiResult<Vec<serde_json::Value>> {
+    match &state.waku {
+        None       => Ok(Json(vec![])),
+        Some(waku) => waku.messages(WAKU_TOPIC_POSTS).await.map(Json).map_err(api_err),
+    }
+}
+
+async fn ws_handler(
+    State(state): State<AppState>,
+    ws: WebSocketUpgrade,
+) -> axum::response::Response {
+    ws.on_upgrade(move |socket| handle_ws(socket, state))
+}
+
+async fn handle_ws(mut socket: WebSocket, state: AppState) {
+    loop {
+        let mut msgs: Vec<serde_json::Value> = Vec::new();
+        if let Some(ref waku) = state.waku {
+            for topic in [WAKU_TOPIC_POSTS, WAKU_TOPIC_VOTES, WAKU_TOPIC_CERTS] {
+                if let Ok(mut batch) = waku.messages(topic).await {
+                    msgs.append(&mut batch);
+                }
+            }
+        }
+        if !msgs.is_empty() {
+            if let Ok(text) = serde_json::to_string(&msgs) {
+                if socket.send(Message::Text(text.into())).await.is_err() {
+                    return;
+                }
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    }
+}
+
 
 pub async fn run(port: u16) -> anyhow::Result<()> {
+    let waku = match std::env::var("WAKU_NODE_URL") {
+        Ok(url) => {
+            let client = Arc::new(WakuClient::new(url));
+            let topics = [WAKU_TOPIC_POSTS, WAKU_TOPIC_VOTES, WAKU_TOPIC_CERTS];
+            if let Err(e) = client.subscribe(&topics).await {
+                eprintln!("[waku] subscribe failed: {e} — continuing without Waku");
+                None
+            } else {
+                Some(client)
+            }
+        }
+        Err(_) => None,
+    };
+
     let state = AppState {
         certs:  Arc::new(Mutex::new(Vec::new())),
         forums: Arc::new(Mutex::new(HashMap::new())),
+        waku,
     };
 
     let cors = CorsLayer::new()
@@ -384,7 +469,8 @@ pub async fn run(port: u16) -> anyhow::Result<()> {
         .route("/aggregate-cert",    post(aggregate_cert))
         .route("/slash",             post(slash))
         .route("/certs",             get(list_certs))
-        // ── on-chain endpoints ──────────────────────────────────────────────
+        .route("/waku-posts",        get(waku_posts))
+        .route("/ws",                get(ws_handler))
         .route("/deploy-forum",      post(deploy_forum))
         .route("/register-onchain",  post(register_onchain))
         .route("/submit-post",       post(submit_post_onchain))
@@ -401,16 +487,12 @@ pub async fn run(port: u16) -> anyhow::Result<()> {
     Ok(())
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// On-chain transaction helpers
-// ═══════════════════════════════════════════════════════════════════════════════
 
 const REGISTRY_PROGRAM_ID: [u32; 8] = [
     1909169956, 2313131218, 3219152519, 3402869729,
     1590750509, 2066446164, 1519591204, 2113149490,
 ];
 
-// Borsh-serialisable NSSATransaction::Public skeleton (matches LEZ wire format)
 #[derive(BorshSerialize)]
 struct NssaMessage {
     program_id:       [u32; 8],
@@ -430,13 +512,11 @@ struct NssaPublicTx {
     witness_set: NssaWitnessSet,
 }
 
-// Enum variant 0 = Public
 #[derive(BorshSerialize)]
 enum NssaTransaction {
     Public(NssaPublicTx),
 }
 
-// Registry-guest-compatible instruction (signatures as Vec<u8>, matching guest types)
 #[derive(Serialize, Deserialize)]
 struct RegModeratorVote {
     forum_id:         [u8; 32],
@@ -525,30 +605,39 @@ async fn send_instruction(
     let b64 = B64.encode(&tx_bytes);
 
     let client = reqwest::Client::new();
-    let resp: serde_json::Value = client
-        .post("http://127.0.0.1:3040")
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "method":  "sendTransaction",
-            "params":  [b64],
-            "id":      1
-        }))
-        .send().await?
-        .json().await?;
-
-    if let Some(err) = resp.get("error") {
-        anyhow::bail!("sequencer: {err}");
+    let mut last_err = anyhow::anyhow!("no attempts");
+    for attempt in 0..3u32 {
+        if attempt > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+        let res = client
+            .post("http://127.0.0.1:3040")
+            .json(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "method":  "sendTransaction",
+                "params":  [b64],
+                "id":      1
+            }))
+            .send().await;
+        match res {
+            Err(e) => { last_err = e.into(); continue; }
+            Ok(r) => {
+                let resp: serde_json::Value = r.json().await?;
+                if let Some(err) = resp.get("error") {
+                    anyhow::bail!("sequencer: {err}");
+                }
+                let hash = match resp.get("result") {
+                    Some(serde_json::Value::String(s)) => s.clone(),
+                    Some(v) => serde_json::to_string(v).unwrap_or_default(),
+                    None => "(no hash returned)".to_string(),
+                };
+                return Ok(hash);
+            }
+        }
     }
-
-    let hash = match resp.get("result") {
-        Some(serde_json::Value::String(s)) => s.clone(),
-        Some(v) => serde_json::to_string(v).unwrap_or_default(),
-        None => "(no hash returned)".to_string(),
-    };
-    Ok(hash)
+    Err(last_err)
 }
 
-// Compute a 4-leaf merkle root from the first 4 (or fewer, zero-padded) commitments
 fn compute_merkle_root(commitments: &[[u8; 32]]) -> ([u8; 32], Vec<[u8; 32]>) {
     let mut leaves = vec![[0u8; 32]; 4];
     for (i, c) in commitments.iter().take(4).enumerate() {
@@ -558,16 +647,13 @@ fn compute_merkle_root(commitments: &[[u8; 32]]) -> ([u8; 32], Vec<[u8; 32]>) {
     (root, leaves)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// On-chain endpoint handlers
-// ═══════════════════════════════════════════════════════════════════════════════
 
 #[derive(Deserialize)]
 struct DeployForumReq {
-    forum_id:    Option<String>,  // optional, random if omitted
+    forum_id:    Option<String>,
     threshold_k: u32,
     threshold_n: u32,
-    moderators:  Vec<String>,     // hex-encoded Ed25519 pubkeys
+    moderators:  Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -667,7 +753,6 @@ async fn register_onchain(
         split_identity(&identity, req.threshold, req.total, &mut rand::rngs::OsRng)
             .map_err(api_err)?;
 
-    // Look up forum account
     let (account_id, leaf_index, new_root) = {
         let mut forums = state.forums.lock().unwrap();
         let entry = forums.get_mut(&req.forum_id)
@@ -679,7 +764,6 @@ async fn register_onchain(
         (entry.account_id, leaf_index, root)
     };
 
-    // Register tx
     let instr_reg = RegInstruction::Register {
         commitment,
         member_tag,
@@ -688,7 +772,6 @@ async fn register_onchain(
     };
     let register_tx = send_instruction(account_id, &instr_reg).await.map_err(api_err)?;
 
-    // Update merkle root tx
     let instr_root = RegInstruction::UpdateMerkleRoot { new_root };
     let root_tx = send_instruction(account_id, &instr_root).await.map_err(api_err)?;
 
@@ -709,7 +792,7 @@ async fn register_onchain(
 #[derive(Deserialize)]
 struct SubmitPostOnChainReq {
     forum_id:       String,
-    receipt_hex:    String,  // journal bytes from /prove-post
+    receipt_hex:    String,
 }
 
 #[derive(Serialize)]
@@ -794,7 +877,6 @@ async fn submit_cert_onchain(
     let instr = RegInstruction::SubmitModerationCert { cert: reg_cert };
     let tx_hash = send_instruction(account_id, &instr).await.map_err(api_err)?;
 
-    // Store cert in audit trail
     state.certs.lock().unwrap().push(cert_to_json(&cert));
 
     Ok(Json(SubmitCertOnChainResp { tx_hash }))

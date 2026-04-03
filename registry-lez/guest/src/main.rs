@@ -1,10 +1,9 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use ed25519_dalek::{Signature, VerifyingKey};
-use nssa_core::program::{AccountPostState, DEFAULT_PROGRAM_ID, ProgramInput, read_nssa_inputs, write_nssa_outputs};
+use nssa_core::program::{AccountPostState, DEFAULT_PROGRAM_ID, ProgramInput, ProgramOutput, read_nssa_inputs};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-// ── Types ─────────────────────────────────────────────────────────────────────
 // All types derive both Borsh (account state storage) and Serde (instruction wire).
 // Signature fields use Vec<u8> because serde doesn't support [u8; 64] by default.
 
@@ -97,7 +96,6 @@ enum Instruction {
     VerifyPost { proof: MembershipProof },
 }
 
-// ── Crypto helpers ────────────────────────────────────────────────────────────
 
 fn sha256(parts: &[&[u8]]) -> [u8; 32] {
     let mut h = Sha256::new();
@@ -119,7 +117,6 @@ fn verify_share(share: &ShamirShare, commitment: &[u8; 32]) -> bool {
     &sha256(&[b"forum/v1/share-commit:", &[share.index], &share.value]) == commitment
 }
 
-// ── GF(256) Shamir reconstruction ─────────────────────────────────────────────
 
 fn gf_mul(mut a: u8, mut b: u8) -> u8 {
     let mut r = 0u8;
@@ -173,7 +170,6 @@ fn shamir_combine(shares: &[ShamirShare]) -> [u8; 32] {
     secret
 }
 
-// ── Registry logic ────────────────────────────────────────────────────────────
 
 fn verify_cert(cert: &ModerationCert, state: &RegistryState) {
     let mut valid = 0u32;
@@ -272,7 +268,6 @@ fn process(state: &mut RegistryState, instruction: Instruction) {
     }
 }
 
-// ── NSSA entry point ──────────────────────────────────────────────────────────
 
 fn main() {
     let (ProgramInput { pre_states, instruction }, instruction_data) =
@@ -302,5 +297,5 @@ fn main() {
         AccountPostState::new(post_account)
     };
 
-    write_nssa_outputs(instruction_data, vec![state_acct], vec![post_state]);
+    ProgramOutput::new(instruction_data, vec![state_acct], vec![post_state]).write();
 }

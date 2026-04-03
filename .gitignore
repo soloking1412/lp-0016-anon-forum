@@ -14,3 +14,17 @@
 .DS_Store
 .env
 Cargo.lock
+
+# Logs
+*.log
+
+# Editor / tool workspace files
+.claude/
+.zenflow/
+.zencoder/
+.idea/
+.vscode/
+
+# LEZ sequencer artifacts
+bedrock_signing_key
+rocksdb/

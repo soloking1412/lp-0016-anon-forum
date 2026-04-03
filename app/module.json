@@ -1,0 +1,13 @@
+{
+  "id": "forum-anon",
+  "name": "Forum Anon",
+  "description": "Anonymous forum with threshold moderation — Risc0 zkVM + Waku + LEZ",
+  "version": "0.1.0",
+  "icon": "icon.svg",
+  "entry": "index.html",
+  "daemon": {
+    "command": "forum-anon",
+    "args": ["daemon", "--port", "3101"]
+  },
+  "permissions": ["network"]
+}

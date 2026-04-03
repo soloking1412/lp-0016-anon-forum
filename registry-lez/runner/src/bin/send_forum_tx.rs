@@ -99,9 +99,7 @@ async fn main() -> Result<()> {
     let tx = PublicTransaction::new(message, witness_set);
     let nssa_tx = NSSATransaction::Public(tx);
 
-    // Connect to sequencer and send
-    let url = "http://127.0.0.1:3040".parse().context("parse URL")?;
-    let client = SequencerClientBuilder::default().build(url).context("build client")?;
+    let client = SequencerClientBuilder::default().build("http://127.0.0.1:3040").context("build client")?;
 
     println!("\nSending to sequencer at http://127.0.0.1:3040 ...");
     match client.send_transaction(nssa_tx).await {

@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ForumCreator } from './components/ForumCreator';
 import { MemberDashboard } from './components/MemberDashboard';
 import { PostComposer } from './components/PostComposer';
 import { ModerationPanel } from './components/ModerationPanel';
 import { ModerationHistory } from './components/ModerationHistory';
 
-type Tab = 'forum' | 'member' | 'post' | 'moderate' | 'audit';
+type Tab = 'forum' | 'member' | 'post' | 'moderate' | 'audit' | 'feed';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'forum',    label: 'Create Forum' },
@@ -13,7 +13,62 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'post',     label: 'Post' },
   { id: 'moderate', label: 'Moderation' },
   { id: 'audit',    label: 'Audit Trail' },
+  { id: 'feed',     label: 'Live Feed' },
 ];
+
+function LiveFeed() {
+  const [msgs, setMsgs] = useState<unknown[]>([]);
+  const [status, setStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
+  const wsRef = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    const ws = new WebSocket('ws://localhost:3101/ws');
+    wsRef.current = ws;
+
+    ws.onopen  = () => setStatus('open');
+    ws.onclose = () => setStatus('closed');
+    ws.onerror = () => setStatus('closed');
+
+    ws.onmessage = (ev) => {
+      try {
+        const batch: unknown[] = JSON.parse(ev.data as string);
+        setMsgs(prev => [...batch, ...prev].slice(0, 200));
+      } catch { /* ignore malformed frames */ }
+    };
+
+    return () => ws.close();
+  }, []);
+
+  const dot = status === 'open' ? '#22c55e' : status === 'connecting' ? '#f59e0b' : '#ef4444';
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+        <span style={{ width: 10, height: 10, borderRadius: '50%', background: dot, display: 'inline-block' }} />
+        <span style={{ color: '#64748b', fontSize: 13 }}>Waku relay — {status}</span>
+      </div>
+      {msgs.length === 0 && (
+        <p style={{ color: '#475569', fontSize: 14 }}>No messages yet. Post or cast a vote to see activity here.</p>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {msgs.map((m, i) => (
+          <pre key={i} style={feedItemStyle}>{JSON.stringify(m, null, 2)}</pre>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const feedItemStyle: React.CSSProperties = {
+  background: '#0f172a',
+  border: '1px solid #1e293b',
+  borderRadius: 6,
+  padding: '10px 14px',
+  fontSize: 12,
+  color: '#94a3b8',
+  overflowX: 'auto',
+  margin: 0,
+};
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('forum');
@@ -51,6 +106,7 @@ export default function App() {
         {tab === 'post'     && <PostComposer />}
         {tab === 'moderate' && <ModerationPanel />}
         {tab === 'audit'    && <ModerationHistory />}
+        {tab === 'feed'     && <LiveFeed />}
       </main>
 
       <footer style={styles.footer}>

@@ -15,6 +15,10 @@ replace-with = "vendored-sources"
 git = "https://github.com/logos-blockchain/logos-blockchain.git"
 replace-with = "vendored-sources"
 
+[source."git+https://github.com/logos-blockchain/logos-execution-zone.git"]
+git = "https://github.com/logos-blockchain/logos-execution-zone.git"
+replace-with = "vendored-sources"
+
 [source."git+https://github.com/logos-co/Overwatch?rev=448c192"]
 git = "https://github.com/logos-co/Overwatch"
 rev = "448c192"

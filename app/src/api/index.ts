@@ -46,8 +46,6 @@ async function apiFetch<T>(path: string, body?: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-// ── Crypto helpers (no on-chain) ─────────────────────────────────────────────
-
 export async function generateIdentity(): Promise<{ id_secret_hex: string; commitment: string }> {
   return apiFetch('/keygen', {});
 }
@@ -102,8 +100,6 @@ export async function listCerts(forum_id?: string): Promise<ModerationCert[]> {
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
-
-// ── On-chain endpoints ───────────────────────────────────────────────────────
 
 export interface DeployForumResp {
   tx_hash: string;

@@ -36,3 +36,13 @@ keygen:
 
 clean:
     cargo clean
+
+demo:
+    RISC0_DEV_MODE=1 SKIP_REAL_PROOF=1 ./demo.sh
+
+demo-real:
+    SKIP_REAL_PROOF=0 ./demo.sh
+
+ci-local:
+    RISC0_DEV_MODE=1 cargo test --workspace
+    RISC0_SKIP_BUILD=1 cargo clippy --workspace -- -D warnings
