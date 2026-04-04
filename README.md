@@ -1,7 +1,5 @@
 # LP-0016: Anonymous Forum with Threshold Moderation
 
-![CI](https://github.com/logos-co/lp-0016-anon-forum/actions/workflows/ci.yml/badge.svg)
-
 Anonymous, moderated forums on the Logos stack. Posts are unlinkable across threads; a coordinated N-of-M moderator group issues strikes; K accumulated strikes trigger an on-chain slash that retroactively deanonymizes the offender.
 
 **Logos stack used:**
